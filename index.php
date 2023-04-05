@@ -1,8 +1,75 @@
 <?php
 
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 $start = microtime(true);
 
 $domain = "https://proxy.playnotes.live/";
+
+
+$content_type = array (
+    'application/EDI-X12',
+    'application/EDIFACT',
+    'application/javascript',
+    'application/octet-stream',
+    'application/ogg',
+    'application/pdf',
+    'application/xhtml+xml',
+    'application/x-shockwave-flash',
+    'application/json',
+    'application/ld+json',
+    'application/xml',
+    'application/zip',
+    'application/x-www-form-urlencoded',
+
+    'audio/mpeg',
+    'audio/x-ms-wma',
+    'audio/vnd.rn-realaudio',
+    'audio/x-wav',
+
+    'image/gif',
+    'image/jpeg',
+    'image/png',
+    'image/tiff',
+    'image/vnd.microsoft.icon',
+    'image/x-icon',
+    'image/vnd.djvu',
+    'image/svg+xml',
+
+    'multipart/mixed',
+    'multipart/alternative',
+    'multipart/related',
+    'multipart/form-data',
+
+    'text/css',
+    'text/csv',
+    'text/html',
+    'text/javascript',
+    'text/plain',
+    'text/xml',
+
+    'video/mpeg',
+    'video/mp4',
+    'video/quicktime',
+    'video/x-ms-wmv',
+    'video/x-msvideo',
+    'video/x-flv',
+    'video/webm',
+
+    'application/vnd.oasis.opendocument.text',
+    'application/vnd.oasis.opendocument.spreadsheet',
+    'application/vnd.oasis.opendocument.presentation',
+    'application/vnd.oasis.opendocument.graphics',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.mozilla.xul+xml',
+);
 
 $no_proxy_domain = array(
                         "ogp.me",
@@ -46,13 +113,27 @@ if (!file_exists($path)) {
 	mkdir($path, 0777, true);
 }
 
-$cache_file = $path."/".$filename;
-if (file_exists($cache_file) && (filemtime($cache_file) > (time() - 60 * 5 ))) {
-   // Cache file is less than five minutes old. 
-   // Don't bother refreshing, just use the file as-is.
-   $file = file_get_contents($cache_file);
-   print $file;
-   exit;
+$cachefile = $path."/".$filename;# . '.cache';
+clearstatcache();
+
+if (file_exists($cachefile) && filemtime($cachefile) > time() - 10000) { // good to serve!
+    $fext = pathinfo($cachefile, PATHINFO_EXTENSION);
+    if($fext == "jpg") {
+    	header("content-type: image/webp");
+    } else {
+        foreach($content_type as $type) {
+            if( strpos($type,$fext) ) {
+                $content_file_type = $type;
+                break;
+            }
+        }
+        if(isset($content_file_type)) {
+        	header("content-type: ".$content_file_type);
+        }
+    }
+
+    include($cachefile);
+    exit;
 }
 
 $org_domain = explode( "/", $_SERVER['REQUEST_URI'])[1];
@@ -158,6 +239,11 @@ if($change) {
     
 }
 $contents = str_replace("www.cardekho.com", "nest.playnotes.live", $contents);
-print $contents;
+// print $contents;
 
-file_put_contents($path."/".$filename, $contents);
+// file_put_contents($path."/".$filename, $contents);
+
+    $handle = fopen($cachefile, "w");
+    fwrite($handle, $contents);
+    fclose($handle);
+    include($cachefile);
