@@ -2,10 +2,30 @@
 
 $start = microtime(true);
 
-$domain = "https://nest.playnotes.live/";
+$domain = "https://proxy.playnotes.live/";
 
+$no_proxy_domain = array(
+                        "ogp.me",
+                        "www.w3.org",
+                        "www.gstatic.com",
+                        "www.youtube.com",
+                        "securepubads.g.doubleclick.net",
+                        "www.googletagmanager.com",
+                        "www.googletagservices.com",
+                        "cdnjs.cloudflare.com",
+                        "schema.org",
+                        "in.linkedin.com",
+                        "twitter.com",
+                        "www.youtube.com",
+                        "s.w.org",
+                        "connect.facebook.net",
+                        "www.google-analytics.com",
+                        "api.connecto.io",
+                        "plus.google.com/+cardekho",
+                        "static.cloudflareinsights.com"
+                        );
 
-$url = "https://www.cardekho.com/".$_GET['url'];
+$url = "https://".$_GET['url'];
 
 $url_parse = parse_url($url);
 $path = $filename = explode("/", $url_parse['path']);
@@ -26,18 +46,20 @@ if (!file_exists($path)) {
 	mkdir($path, 0777, true);
 }
 
-$cachefile = $path."/".$filename . '.cache';
-clearstatcache();
-
-if (file_exists($cachefile) && filemtime($cachefile) > time() - 10) { // good to serve!
-    include($cachefile);
-    exit;
+$cache_file = $path."/".$filename;
+if (file_exists($cache_file) && (filemtime($cache_file) > (time() - 60 * 5 ))) {
+   // Cache file is less than five minutes old. 
+   // Don't bother refreshing, just use the file as-is.
+   $file = file_get_contents($cache_file);
+   print $file;
+   exit;
 }
 
+$org_domain = explode( "/", $_SERVER['REQUEST_URI'])[1];
 $user_headers = array();
 foreach (getallheaders() as $name => $value) {
 	if (!preg_match('/^(?:X-|Cf-|Cdn-|via|server|report-to)/i', $name)) {
-    	$value = str_replace("nest.playnotes.live", "www.cardekho.com", $value);
+    	$value = str_replace("proxy.playnotes.live", $org_domain, $value);
         $user_headers[$name] = $value;
     }
 }
@@ -68,9 +90,12 @@ $user_headers["upgrade-insecure-requests"] = '1';
 $user_headers["user-agent"] = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36';
 $user_headers["accept-encoding"] = 'gzip';
 
+unset($user_headers["Host"]);
 if(isset($user_headers["Host"])) {
     $user_headers["Host"] = $org_domain;
 }
+
+
 
 #print_r($user_headers);
 #exit;
@@ -98,31 +123,41 @@ curl_close($ch);
 // Split header text into an array.
 $header_text = preg_split('/[\r\n]+/', $header);
 
-$res_header = [];
 $change = false;
 // Propagate headers to response.
 foreach ($header_text as $headerChange) {
-	$headerChange = str_replace("www.cardekho.com", "nest.playnotes.live", $headerChange);
-	header($headerChange);
+	#if (preg_match('/^(?:Content-Type|Content-Language|Set-Cookie):/i', $headerChange)) {
+    	$headerChange = str_replace("https://", $domain, $headerChange);
+    	$headerChange = str_replace("http://", $domain, $headerChange);
+    	header($headerChange);
+    #}
+	if (!preg_match('/^(?:content-type: text)/i', $headerChange)) {
+    	$change = true;
+	}
+	if (!preg_match('/^(?:content-type: image)/i', $headerChange)) {
+    	$change = false;
+	}
 }
 
+if($change) {
+    $contents = str_replace("https://", $domain, $contents);
+    $contents = str_replace("http://", $domain, $contents);
+    
+    $contents = str_replace('href="/', 'href="/'.$url_parse['host']."/", $contents);
+    $contents = str_replace("href='/", "href='/".$url_parse['host']."/", $contents);
+    $contents = str_replace('src="/', 'src="/'.$url_parse['host']."/", $contents);
+    $contents = str_replace("src='/", "src='/".$url_parse['host']."/", $contents);
+    
+    foreach($no_proxy_domain as $no_proxy) {
+        if("$no_proxy" == "www.w3.org" || "$no_proxy" == "ogp.me") {
+            $contents = str_replace($domain.$no_proxy, "http://".$no_proxy, $contents);
+        } else {
+            $contents = str_replace($domain.$no_proxy, "https://".$no_proxy, $contents);
+        }
+    }
+    
+}
 $contents = str_replace("www.cardekho.com", "nest.playnotes.live", $contents);
-$contents = str_replace("stimg.cardekho.com", "proxy.playnotes.live/stimg.cardekho.com", $contents);
-$contents = str_replace("staticcont.cardekho.com", "proxy.playnotes.live/staticcont.cardekho.com", $contents);
-
-
-ob_start();
-
-print "<!-- Last updated: " . date("d-m-y H:i:s") . " -->";
 print $contents;
 
-$contents = ob_get_contents();
-ob_end_clean();
-
-if (!empty($_POST)) {
-    $handle = fopen($cachefile, "w");
-    fwrite($handle, $contents);
-    fclose($handle);
-}
-
-include($cachefile);
+file_put_contents($path."/".$filename, $contents);
